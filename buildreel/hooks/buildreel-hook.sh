@@ -64,6 +64,17 @@ post="If this turn also reached a good moment for a post (a feature done start t
 [ "$offered" -gt 0 ] 2>/dev/null && post=""
 
 project=$(basename "$root" | sed 's/[\\"]//g')
+# The wording comes from Buildreel's server each time (hookReply in the connector), so it can change without
+# a plugin update; this script's own copy below is only for when the server can't be reached.
+s=0; [ "$sent" -gt "${sent_before:-0}" ] 2>/dev/null && s=1
+o=0; [ "$offered" -gt 0 ] 2>/dev/null && o=1
+reply=$(curl -fsS --max-time 4 --get --data-urlencode "project=$project" -d "sent=$s" -d "offered=$o" \
+  "${BUILDREEL_URL:-https://buildreel.pages.dev/mcp}/hook" 2>/dev/null | tr -d '\n')
+case "$reply" in
+  '{}') exit 0 ;;
+  '{"decision":"block","reason":"'*'"}') printf '%s\n' "$reply"; exit 0 ;;
+esac
+
 if [ "$sent" -gt "${sent_before:-0}" ] 2>/dev/null; then # it already sent the update this turn
   [ -n "$post" ] || exit 0
   printf '{"decision":"block","reason":"%s"}\n' "Buildreel: this turn changed $project and sent its update. $post If it isn't a good moment, just stop without mentioning this."

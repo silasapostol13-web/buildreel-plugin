@@ -3,6 +3,8 @@
 hook="$(cd "$(dirname "$0")" && pwd)/buildreel-hook.sh"
 work=$(mktemp -d "${TMPDIR:-/tmp}/buildreel-hook-test.XXXXXX")
 export BUILDREEL_HOOK_STATE="$work/state"
+# No server by default: the hook falls back to its own wording. The server tests below set it.
+export BUILDREEL_URL="http://127.0.0.1:9"
 fails=0
 check() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: got [$2] want [$3]"; fails=$((fails + 1)); fi; }
 # Each session has its own transcript, like Claude Code: $work/<session>.jsonl.
@@ -97,6 +99,18 @@ echo sub >> "$work/team/a.txt"
 check "an edit made by one of the session's subagents counts" "$(valid "$(run stop dev "$work/team")")" "block"
 
 # ---- tokens-hook.sh: the token card's counts, sent in the background ----
+# The wording comes from Buildreel's server when it answers (a file stands in for it here).
+mkdir -p "$work/srv"; srv="file://$work/srv"
+repo served; printf '## Buildreel\n' > "$work/served/CLAUDE.md"; git -C "$work/served" add . && git -C "$work/served" -c user.email=t@t -c user.name=t commit -qm rule
+run start s5 "$work/served"
+printf '{"decision":"block","reason":"Buildreel: new wording from the server."}\n' > "$work/srv/hook"
+edit s5 served
+check "the server's wording is used when it answers" "$(BUILDREEL_URL=$srv run stop s5 "$work/served")" '{"decision":"block","reason":"Buildreel: new wording from the server."}'
+printf '{}' > "$work/srv/hook"; edit s5 served
+check "the server saying nothing means nothing" "$(BUILDREEL_URL=$srv run stop s5 "$work/served")" ""
+printf 'oops' > "$work/srv/hook"; edit s5 served
+check "an odd answer falls back to the hook's own wording" "$(BUILDREEL_URL=$srv run stop s5 "$work/served" | grep -c 'for project')" "1"
+
 tokens="$(dirname "$hook")/tokens-hook.sh"
 export BUILDREEL_TOKEN_KEY="$work/key" BUILDREEL_HOOK_STATE="$work/tstate"
 # A stand-in counter that notes how it was run, slowly, like the real one on a big Mac.

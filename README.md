@@ -33,8 +33,10 @@ claude plugin install buildreel@buildreel
 
 3. Restart Claude Code. In a project, ask Claude to "set up this project for Buildreel".
 
-Update later with `claude plugin marketplace update buildreel` and
-`claude plugin update buildreel@buildreel`.
+4. Turn on updates, once: in Claude Code type `/plugin`, open **Marketplaces**, pick
+   **buildreel** and choose **Enable auto-update**. Claude Code doesn't let a plugin do this for you.
+   Without it, update by hand with `claude plugin marketplace update buildreel` and
+   `claude plugin update buildreel@buildreel`. The connector itself updates on its own.
 
 ## What runs on your Mac
 
