@@ -1,0 +1,8 @@
+{
+  "name": "buildreel",
+  "version": "0.7.0",
+  "description": "Sends a Buildreel update at the end of each work session, and offers a video only for a core feature or new main screen, without being asked. Works in projects set up for Buildreel (a \"## Buildreel\" section in CLAUDE.md or AGENTS.md). Offers a post with a one-tap Yes / Not now card at good moments (at most once a chat). Keeps your token card up to date by itself: after chats it sends your AI token counts (numbers only, never chat text).",
+  "author": {
+    "name": "Buildreel"
+  }
+}

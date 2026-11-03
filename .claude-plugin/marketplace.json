@@ -1,0 +1,16 @@
+{
+  "name": "buildreel",
+  "owner": {
+    "name": "Buildreel"
+  },
+  "metadata": {
+    "description": "Buildreel's Claude Code plugin: build-in-public updates sent automatically."
+  },
+  "plugins": [
+    {
+      "name": "buildreel",
+      "source": "./buildreel",
+      "description": "Sends a Buildreel update at the end of each work session, without being asked."
+    }
+  ]
+}
