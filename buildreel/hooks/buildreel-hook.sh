@@ -56,14 +56,14 @@ edits() { logs | grep -oE "$use\"(Edit|Write|MultiEdit|NotebookEdit)\",\"input\"
 sent=$(logs | grep -oE "$use\"[^\"]*__post_update\"" | ids)
 receipts=$(logs | awk '{ gsub(/\{"type":"tool_use"/, "\n&"); print }' | grep -E "^\{$use\"[^\"]*__post_update\"" \
   | sed 's/"caller":.*//' | grep -E '"receipt": *true' | sed 's/^{"type":"tool_use","id":"\([^"]*\)".*/\1/' | sort -u | wc -l | tr -d ' ')
-writes='(^|[^a-z])git( +-[cC] +[^ ]+)* +(commit|apply|am|cherry-pick|revert|merge|mv|rm|restore|checkout|reset|stash)|sed +-[a-z]*i|perl +-[a-z]*i|(^|[^a-z-])(tee|mv|cp|rm|touch|mkdir|ln|patch|trash|rsync|ditto|unzip|xcodegen)( |\\n|$)|--fix|--write|>'
-mine=$({
-  edits
-  # Before looking for ">", drop the ones that write nothing: 2>/dev/null, >&2, ->, =>, >=.
-  logs | grep -oE "$bash" | sed -E 's#[0-9&]*>>? *"?/dev/null"?##g; s#[0-9]*>&[0-9-]##g; s#[-=]>|>=##g' | grep -E "$writes"
-} | ids)
-# Edits to files that draw a screen (SwiftUI, web, Android, Flutter, asset catalogs).
-ui=$(edits | grep -E '\.(swift|tsx|jsx|vue|svelte|css|scss|sass|less|html|xib|storyboard|dart|kt|astro)$|\.xcassets/' | ids)
+writes='(^|[^a-z])git( +-[cC] +[^ ]+)* +(commit|apply|am|cherry-pick|revert|merge|mv|rm|restore|checkout|reset|stash)|sed +-[a-z]*i|perl +-[a-z]*i|(^|[^a-z-])(tee|mv|cp|rm|touch|mkdir|ln|patch|trash|rsync|ditto|unzip|xcodegen)( |\\n|$)|--fix|--write|\.write(_text)?\(|writeFileSync|>'
+# Shell commands that write something. Before looking for ">", drop the ones that write nothing: 2>/dev/null, >&2, ->, =>, >=.
+shellw() { logs | grep -oE "$bash" | sed -E 's#[0-9&]*>>? *"?/dev/null"?##g; s#[0-9]*>&[0-9-]##g; s#[-=]>|>=##g' | grep -E "$writes"; }
+mine=$({ edits; shellw; } | ids)
+# Edits to files that draw a screen (SwiftUI, web, Android, Flutter, asset catalogs), with the edit tools or in the shell
+# (sed -i, a script that rewrites the file).
+screens='\.(swift|tsx|jsx|vue|svelte|css|scss|sass|less|html|xib|storyboard|dart|kt|astro)'
+ui=$({ edits | grep -E "$screens\$|\\.xcassets/"; shellw | grep -E "$screens([^A-Za-z]|\$)"; } | ids)
 # Screenshots of the product: the simulator, a browser, an Xcode tool. Not other apps on the Mac.
 shots=$({
   logs | grep -oE "$use\"[^\"]*[Ss]creenshot[^\"]*\"" | grep -v 'computer-use'
@@ -78,12 +78,13 @@ recs=$({
 } | ids)
 # Each tool call on its own line, to read inside one call's input.
 calls() { logs | awk '{ gsub(/\{"type":"tool_use"/, "\n&"); print }'; }
-# Edits to screen files that add or change motion (animations, transitions), what's removed not counted.
-motion=$(calls | grep -E "^\{$use\"(Edit|Write|MultiEdit)\"" | grep -F "\":\"$root/" \
-  | grep -E '"file_path":"[^"]*\.(swift|tsx|jsx|vue|svelte|css|scss|sass|less|html|dart|kt|astro)"' \
-  | sed -E 's/"old_string":"([^"\\]|\\.)*"//g; s/"caller":.*//' \
-  | grep -E 'withAnimation|\.animation\(|\.transition\(|matchedGeometryEffect|matchedTransitionSource|navigationTransition|[Pp]haseAnimator|[Kk]eyframeAnimator|contentTransition|symbolEffect|\.spring\(|interpolatingSpring|UIView\.animate|UIViewPropertyAnimator|CABasicAnimation|@keyframes|animation:|framer-motion|AnimatePresence|<motion\.|useSpring|gsap|startViewTransition|view-transition|\.animate\(|AnimationController|Animated[A-Z][a-z]|TweenAnimationBuilder|Hero\(|animate[A-Z][A-Za-z]*AsState|AnimatedVisibility|AnimatedContent|Crossfade\(' \
-  | sed 's/^{"type":"tool_use","id":"\([^"]*\)".*/\1/' | sort -u | wc -l | tr -d ' ')
+# Edits to screen files that add or change motion (animations, transitions); with the edit tools, what's removed isn't counted.
+moves='withAnimation|\.animation\(|\.transition\(|matchedGeometryEffect|matchedTransitionSource|navigationTransition|[Pp]haseAnimator|[Kk]eyframeAnimator|contentTransition|symbolEffect|\.spring\(|interpolatingSpring|UIView\.animate|UIViewPropertyAnimator|CABasicAnimation|@keyframes|animation:|framer-motion|AnimatePresence|<motion\.|useSpring|gsap|startViewTransition|view-transition|\.animate\(|AnimationController|Animated[A-Z][a-z]|TweenAnimationBuilder|Hero\(|animate[A-Z][A-Za-z]*AsState|AnimatedVisibility|AnimatedContent|Crossfade\('
+motion=$({
+  calls | grep -E "^\{$use\"(Edit|Write|MultiEdit)\"" | grep -F "\":\"$root/" | grep -E "\"file_path\":\"[^\"]*$screens\"" \
+    | sed -E 's/"old_string":"([^"\\]|\\.)*"//g; s/"caller":.*//' | grep -E "$moves"
+  shellw | grep -E "$screens([^A-Za-z]|\$)" | grep -E "$moves"
+} | ids)
 # Updates sent with a clip (recording_id).
 clips=$(calls | grep -E "^\{$use\"[^\"]*__post_update\"" | sed 's/"caller":.*//' | grep -E '"recording_id": *"[^"]' \
   | sed 's/^{"type":"tool_use","id":"\([^"]*\)".*/\1/' | sort -u | wc -l | tr -d ' ')

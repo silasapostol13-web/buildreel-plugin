@@ -208,6 +208,20 @@ out=$(run stop m2 "$work/mo")
 check "two clips a chat at most, then the screenshot" "$(says "$out" 'took a screenshot')$(says "$out" 'short clip')" "10"
 at 0
 
+# Edits made in the shell count too: a script that rewrites a screen file, sed -i on one. Reading one doesn't.
+run start m5 "$work/mo"
+echo m5 >> "$work/mo/Home.swift"
+tool m5 Bash '{"command":"python3 - <<'"'"'EOF'"'"'\np=\"App/Home.swift\"\ns=open(p).read().replace(\"landed = true\", \"withAnimation(.easeInOut(duration: 1.2)) { landed = true }\")\nopen(p, \"w\").write(s)\nEOF","description":"Edit"}'
+shot m5
+check "a script that adds an animation to a screen file, then a screenshot: a clip" "$(says "$(run stop m5 "$work/mo")" 'short clip')" "1"
+run start m6 "$work/mo"
+echo m6 >> "$work/mo/Home.swift"; tool m6 Bash '{"command":"sed -i \"\" \"s/Water/Water now/\" App/Home.swift","description":"Edit"}'; shot m6
+out=$(run stop m6 "$work/mo")
+check "sed -i on a screen file, then a screenshot: the screenshot update" "$(says "$out" 'took a screenshot')$(says "$out" 'short clip')" "10"
+run start m7 "$work/mo"
+edit m7 mo; tool m7 Bash '{"command":"cat App/Home.swift | grep withAnimation","description":"Read"}'; shot m7
+check "reading a screen file is not editing one" "$(run stop m7 "$work/mo")" ""
+
 # A 0.9.0 state file (eleven numbers) still works, and a new recording isn't taken for one already there.
 run start m3 "$work/mo"; record m3; run stop m3 "$work/mo" >/dev/null
 cut -d' ' -f1-11 "$BUILDREEL_HOOK_STATE/m3" > "$work/st" && mv "$work/st" "$BUILDREEL_HOOK_STATE/m3"

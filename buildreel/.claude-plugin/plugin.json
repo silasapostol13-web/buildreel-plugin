@@ -1,6 +1,6 @@
 {
   "name": "buildreel",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "Shows Buildreel in the chat at real moments while you build: when a screen changes and Claude screenshots it, the screenshot goes to your phone as an update, and when what changed moves (an animation, a transition), Claude records a few seconds of the real app doing it and sends that clip instead; when you wrap up or a request is done, Claude closes the session with a receipt card. Offers a post with a one-tap Yes / Not now card at good moments (at most once a chat). Only in projects set up for Buildreel (a \"## Buildreel\" section in CLAUDE.md or AGENTS.md). Keeps your token card up to date: after chats it sends your AI token counts (numbers only, never chat text).",
   "author": {
     "name": "Buildreel"
