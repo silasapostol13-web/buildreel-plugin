@@ -8,6 +8,9 @@ This plugin makes Claude Code send those updates by itself:
 
 - While you build: when a screen changes and Claude looks at it (a simulator or browser
   screenshot), that screenshot goes to your phone as an update, a few times a chat at most.
+- When what changed moves (an animation, a transition, a short flow) and Claude has seen it
+  running, it records a few seconds of the real app doing it, trims it to the moment, checks it,
+  and sends that clip instead of a still, ready to post from your phone. Two clips a chat at most.
 - When you wrap up ("that's it for today") or Claude finishes what you asked and commits, it
   closes the session with a receipt card: what got done for your users, the day, the time, a
   milestone and what's next. It lands on your phone too.
@@ -48,7 +51,8 @@ claude plugin install buildreel@buildreel
 Two small hooks, both in `buildreel/hooks/`, both readable:
 
 - `buildreel-hook.sh` looks at the end of a turn at what the turn did in a Buildreel project (a
-  screen edited and screenshotted, a commit, whether you said you're wrapping up) and, only then,
+  screen edited and screenshotted or recorded, whether the edit added an animation, a commit,
+  whether you said you're wrapping up) and, only then,
   reminds Claude to send the update or the receipt. It sends Buildreel a few yes/no flags and
   counts to pick the wording, never your messages or code.
 - `tokens-hook.sh` runs `count-tokens.py` in the background. It reads token counts from Claude

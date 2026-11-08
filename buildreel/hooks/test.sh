@@ -169,6 +169,75 @@ echo sub >> "$work/team/Home.swift"; at 30; shot dev
 check "a screen edit made by one of the session's subagents counts" "$(valid "$(run stop dev "$work/team")")" "block"
 at 0
 
+# ---- Clips (0.10.0): something that moves goes as a short clip of the real app ----
+repo mo; printf '## Buildreel\n' > "$work/mo/CLAUDE.md"; git -C "$work/mo" add . && git -C "$work/mo" -c user.email=t@t -c user.name=t commit -qm rule
+# Claude in session $1 adds an animation to a screen in repo $2 (or removes one: the old_string holds it).
+anim() { echo "$1 anim" >> "$work/$2/Home.swift"; tool "$1" Edit "{\"file_path\":\"$(top "$2")/Home.swift\",\"old_string\":\"Text(a)\",\"new_string\":\"Text(a).transition(.move(edge: .bottom))\"}"; }
+unanim() { echo "$1 unanim" >> "$work/$2/Home.swift"; tool "$1" Edit "{\"file_path\":\"$(top "$2")/Home.swift\",\"old_string\":\"withAnimation(.spring) { x }\",\"new_string\":\"x\"}"; }
+record() { tool "$1" Bash '{"command":"xcrun simctl io booted recordVideo --codec h264 --force /tmp/r.mov &","description":"Record"}'; }
+clip() { tool "$1" mcp__claude_ai_Buildreel__post_update '{"project":"x","sentence":"s","upload_id":"a","recording_id":"b"}'; }
+run start m1 "$work/mo"
+anim m1 mo
+check "animation code never seen running says nothing" "$(run stop m1 "$work/mo")" ""
+anim m1 mo; shot m1
+out=$(run stop m1 "$work/mo")
+check "animation code and a screenshot: a short clip, not a still" "$(says "$out" 'as a short clip instead of a still')" "1"
+check "the clip ask is valid JSON" "$(valid "$out")" "block"
+check "it says how to record, trim, check and send" "$(says "$out" 'recordVideo.*ffmpeg.*frames.*kind \\"recording\\".*recording_id')" "1"
+clip m1; run stop m1 "$work/mo" true >/dev/null
+at 25; screen m1 mo; shot m1
+out=$(run stop m1 "$work/mo")
+check "after a clip, a still screen change is a screenshot again" "$(says "$out" 'took a screenshot')$(says "$out" 'short clip')" "10"
+update m1; run stop m1 "$work/mo" true >/dev/null
+at 50; unanim m1 mo; shot m1
+check "removing an animation isn't motion" "$(says "$(run stop m1 "$work/mo")" 'short clip')" "0"
+at 0
+
+run start m2 "$work/mo"
+screen m2 mo; run stop m2 "$work/mo" >/dev/null
+record m2
+check "a recording after a screen change: send it, even on a turn that changed nothing else" "$(says "$(run stop m2 "$work/mo")" 'short clip')" "1"
+clip m2; run stop m2 "$work/mo" true >/dev/null
+at 30; record m2
+check "a recording with no screen change since the last update says nothing" "$(run stop m2 "$work/mo")" ""
+at 60; screen m2 mo; record m2
+check "a second clip a chat is fine" "$(says "$(run stop m2 "$work/mo")" 'short clip')" "1"
+clip m2; run stop m2 "$work/mo" true >/dev/null
+at 90; anim m2 mo; shot m2
+out=$(run stop m2 "$work/mo")
+check "two clips a chat at most, then the screenshot" "$(says "$out" 'took a screenshot')$(says "$out" 'short clip')" "10"
+at 0
+
+# A 0.9.0 state file (eleven numbers) still works, and a new recording isn't taken for one already there.
+run start m3 "$work/mo"; record m3; run stop m3 "$work/mo" >/dev/null
+cut -d' ' -f1-11 "$BUILDREEL_HOOK_STATE/m3" > "$work/st" && mv "$work/st" "$BUILDREEL_HOOK_STATE/m3"
+screen m3 mo; shot m3
+out=$(run stop m3 "$work/mo")
+check "a 0.9.0 state file is read; its old recording isn't new" "$(says "$out" 'took a screenshot')$(says "$out" 'short clip')" "10"
+# The commit ask still notes when it went (the state line's eleventh number), now that more follow it.
+commit m3 mo; at 1; run stop m3 "$work/mo" >/dev/null
+check "the receipt ask's time is kept in its place" "$(cut -d' ' -f11 "$BUILDREEL_HOOK_STATE/m3")" "$BUILDREEL_NOW"
+check "and the numbers after it stay" "$(awk '{ print NF }' "$BUILDREEL_HOOK_STATE/m3")" "13"
+at 0
+
+# What the server is told: motion, a recording, clips sent so far.
+port=$((20000 + RANDOM % 20000))
+python3 -c 'import http.server, json, sys
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(s):
+        s.send_response(200); s.end_headers(); s.wfile.write(json.dumps({"decision": "block", "reason": "Q " + s.path}, separators=(",", ":")).encode())
+    def log_message(s, *a): pass
+http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()' "$port" & srvpid=$!
+sleep 1
+run start m4 "$work/mo"; anim m4 mo; shot m4
+out=$(BUILDREEL_URL="http://127.0.0.1:$port" run stop m4 "$work/mo")
+check "the server hears motion=1 rec=0 clips=0" "$(says "$out" 'motion=1&rec=0&clips=0')" "1"
+clip m4; BUILDREEL_URL="http://127.0.0.1:$port" run stop m4 "$work/mo" true >/dev/null
+screen m4 mo; record m4
+out=$(BUILDREEL_URL="http://127.0.0.1:$port" run stop m4 "$work/mo")
+check "then motion=0 rec=1 clips=1" "$(says "$out" 'motion=0&rec=1&clips=1')" "1"
+kill $srvpid 2>/dev/null; wait $srvpid 2>/dev/null
+
 # ---- tokens-hook.sh: the token card's counts, sent in the background ----
 # The wording comes from Buildreel's server when it answers (a file stands in for it here).
 mkdir -p "$work/srv"; srv="file://$work/srv"
