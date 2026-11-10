@@ -16,7 +16,9 @@ This plugin makes Claude Code send those updates by itself:
   milestone and what's next. It lands on your phone too.
 - All of this only happens in projects you set up for Buildreel (a `## Buildreel` section in the
   project's `CLAUDE.md` or `AGENTS.md`; the connector's `setup_project` writes it). Every other
-  turn, the plugin stays quiet.
+  turn, the plugin stays quiet. It also waits while your builds, tests or a review are still
+  running, and asks for a receipt only after real work (not a session that only wrote notes or
+  docs), because each reminder costs a Claude step from your own usage.
 - At good moments (a big feature, a new main screen) it offers a video or a post with a one-tap
   Yes / Not now. Nothing is made without your yes.
 - It keeps your token card up to date: after chats it sends your AI token counts. Numbers only,
@@ -24,27 +26,42 @@ This plugin makes Claude Code send those updates by itself:
 
 ## Install
 
-You need the Buildreel iPhone app (TestFlight for now) and the Buildreel connector.
+You need the Buildreel iPhone app ([TestFlight](https://testflight.apple.com/join/f48GWtb3) for now)
+and Claude Code or Codex on a Mac.
 
-1. Connect Claude to Buildreel: open <https://buildreel.app/connect/claude>, click Add, then
-   Connect, and sign in with the same Apple ID you use in the app. Connectors you add on
-   claude.ai show up in Claude Code too.
-2. Add the plugin in a terminal:
-
-```bash
-claude plugin marketplace add silasapostol13-web/buildreel-plugin
-```
+**One line (easiest).** Open the app, sign in, and it shows a line with your own code to paste into
+Terminal. Starting on the Mac instead? Run:
 
 ```bash
-claude plugin install buildreel@buildreel
+curl -fsSL https://buildreel.app/install | sh
 ```
 
-3. Restart Claude Code. In a project, ask Claude to "set up this project for Buildreel".
+It connects Claude Code and Codex to Buildreel (a browser opens to sign in with the Apple ID you use
+on your iPhone), installs this plugin, and makes your first token card. With no code it ends with a
+QR code for the app. Read it first if you like: `curl -fsSL https://buildreel.app/install`.
 
-4. Turn on updates, once: in Claude Code type `/plugin`, open **Marketplaces**, pick
-   **buildreel** and choose **Enable auto-update**. Claude Code doesn't let a plugin do this for you.
-   Without it, update by hand with `claude plugin marketplace update buildreel` and
-   `claude plugin update buildreel@buildreel`. The connector itself updates on its own.
+Then, in the project you're building, tell Claude Code "set up Buildreel".
+
+**Just the plugin, by hand:**
+
+```bash
+claude plugin marketplace add silasapostol13-web/buildreel-plugin && claude plugin install buildreel@buildreel
+```
+
+The plugin needs the Buildreel connector. If you use Claude Code with a Claude account, add it at
+<https://buildreel.app/connect/claude> (connectors added on claude.ai show up in Claude Code too). If you
+use an API key instead, claude.ai connectors don't reach Claude Code, so add it directly:
+
+```bash
+claude mcp add --transport http --scope user buildreel https://buildreel.app/mcp && claude mcp login buildreel
+```
+
+Restart Claude Code after installing.
+
+**Turn on updates, once:** in Claude Code type `/plugin`, open **Marketplaces**, pick **buildreel**
+and choose **Enable auto-update**. Claude Code doesn't let a plugin do this for you. Without it, update
+by hand with `claude plugin marketplace update buildreel` and `claude plugin update buildreel@buildreel`.
+The connector itself updates on its own.
 
 ## What runs on your Mac
 

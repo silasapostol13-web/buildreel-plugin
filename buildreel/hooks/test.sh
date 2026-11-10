@@ -15,8 +15,8 @@ valid() { printf '%s' "$1" | python3 -c 'import json,sys; d=json.load(sys.stdin)
 n=0
 tool() { n=$((n + 1)); printf '{"type":"assistant","timestamp":"x","message":{"content":[{"type":"tool_use","id":"toolu_%s","name":"%s","input":%s,"caller":{"type":"direct"}}]}}\n' "$n" "$2" "$3" >> "$work/$1.jsonl"; }
 top() { git -C "$work/$1" rev-parse --show-toplevel; }
-# Claude in session $1 edits a plain file in repo $2 (nothing a screen draws).
-edit() { echo "$1" >> "$work/$2/a.txt"; tool "$1" Edit "{\"file_path\":\"$(top "$2")/a.txt\",\"old_string\":\"x\"}"; }
+# Claude in session $1 edits code in repo $2 (nothing a screen draws).
+edit() { echo "$1" >> "$work/$2/a.ts"; tool "$1" Edit "{\"file_path\":\"$(top "$2")/a.ts\",\"old_string\":\"x\"}"; }
 # ... edits a screen (a SwiftUI view) in repo $2.
 screen() { echo "$1" >> "$work/$2/Home.swift"; tool "$1" Edit "{\"file_path\":\"$(top "$2")/Home.swift\",\"old_string\":\"x\"}"; }
 # ... takes a screenshot of the simulator, the way it really shows up (XcodeBuildMCP, or simctl in the shell).
@@ -74,7 +74,7 @@ check "after one post offer in the chat, no more are asked for" "$(says "$out" o
 update s2 receipt; run stop s2 "$work/app" true >/dev/null
 at 100; commit s2 app
 check "one receipt, then the next commit is quiet" "$(run stop s2 "$work/app")" ""
-at 205; commit s2 app
+at 205; edit s2 app; commit s2 app
 check "two hours after the receipt, a commit can close another stretch" "$(says "$(run stop s2 "$work/app")" 'receipt: true')" "1"
 # The person wraps up: the session's receipt, even on a turn that changed nothing itself.
 say() { printf '{"type":"user","message":{"role":"user","content":"%s"}}\n' "$2" >> "$work/$1.jsonl"; }
@@ -106,15 +106,131 @@ check "a curly apostrophe still wraps up" "$(says "$(run stop w1 "$work/wrap")" 
 # Someone who commits every turn (a backup rule) is asked for the receipt once an hour, not every turn.
 repo bk; printf '## Buildreel\n' > "$work/bk/CLAUDE.md"; git -C "$work/bk" add . && git -C "$work/bk" -c user.email=t@t -c user.name=t commit -qm rule
 run start b1 "$work/bk"; at 0
-commit b1 bk
+edit b1 bk; commit b1 bk
 check "the first commit asks" "$(says "$(run stop b1 "$work/bk")" 'saved work on')" "1"
-at 5; commit b1 bk
+at 5; edit b1 bk; commit b1 bk
 check "Claude skipped it (mid-task); the next commit 5 minutes later is quiet" "$(run stop b1 "$work/bk")" ""
-at 40; commit b1 bk
+at 40; edit b1 bk; commit b1 bk
 check "and 40 minutes later" "$(run stop b1 "$work/bk")" ""
-at 65; commit b1 bk
+at 65; edit b1 bk; commit b1 bk
 check "an hour after the last ask, a commit asks again" "$(says "$(run stop b1 "$work/bk")" 'saved work on')" "1"
+at 130; commit b1 bk
+check "a commit with no new work since the last ask is quiet, however long after" "$(run stop b1 "$work/bk")" ""
 at 0
+
+# Only real work asks for a receipt: a session that only wrote notes or docs isn't asked (they ended in "skipping").
+repo dc; printf '## Buildreel\n' > "$work/dc/CLAUDE.md"; git -C "$work/dc" add . && git -C "$work/dc" -c user.email=t@t -c user.name=t commit -qm rule
+run start d1 "$work/dc"
+note() { echo "$1" >> "$work/$2/$3"; mkdir -p "$(dirname "$work/$2/$3")"; tool "$1" Write "{\"file_path\":\"$(top "$2")/$3\",\"content\":\"x\"}"; }
+mkdir -p "$work/dc/docs"; note d1 dc docs/plan.md; note d1 dc notes.txt; commit d1 dc
+check "a commit after only notes and docs is quiet" "$(run stop d1 "$work/dc")" ""
+printf '{"type":"user","message":{"role":"user","content":"thats it for today"}}\n' >> "$work/d1.jsonl"
+check "and wrapping up after only notes is quiet too" "$(run stop d1 "$work/dc")" ""
+printf '{"type":"user","message":{"role":"user","content":"one more thing: fix the date"}}\n' >> "$work/d1.jsonl"
+edit d1 dc; commit d1 dc
+check "a commit after code asks" "$(says "$(run stop d1 "$work/dc")" 'saved work on')" "1"
+echo y >> "$work/dc/api.py"; tool d1 Bash '{"command":"sed -i \"\" s/a/b/ Sources/api.py && git commit -am x","description":"Fix"}'
+at 70
+check "a shell edit to code counts as work" "$(says "$(run stop d1 "$work/dc")" 'saved work on')" "1"
+at 0
+run start d2 "$work/dc"; note d2 dc docs/notes2.md
+tool d2 Bash '{"command":"cd /tmp/scratch && cat > v.js <<'"'"'EOF'"'"'\nconst a = 1\nEOF","description":"Scratch script"}'
+tool d2 Bash '{"command":"cat > /tmp/other/App.swift <<'"'"'EOF'"'"'\nx\nEOF","description":"Write outside"}'
+tool d2 Bash "{\"command\":\"cd $(top dc); sed -e 's/<[^>]*>//g' site/index.html | head\",\"description\":\"Read the page\"}"
+commit d2 dc
+check "scratch-folder scripts and read-only commands aren't real work" "$(run stop d2 "$work/dc")" ""
+echo z >> "$work/dc/New.swift"
+tool d2 Bash "{\"command\":\"cd $(top dc) && cat > App/New.swift <<'EOF'\\nstruct New {}\\nEOF\",\"description\":\"Add a file\"}"
+commit d2 dc
+check "but writing a code file in the project is" "$(says "$(run stop d2 "$work/dc")" 'saved work on')" "1"
+at 0
+
+# Tests aren't screens: a test file edited and a screenshot taken isn't a screen update.
+run start x1 "$work/dc"; mkdir -p "$work/dc/Tests" "$work/dc/web"
+note x1 dc Tests/HomeTests.swift; note x1 dc web/home.test.tsx; shot x1
+check "editing tests and taking a screenshot says nothing" "$(run stop x1 "$work/dc")" ""
+note x1 dc HomeView.swift; shot x1
+check "a real screen file still asks" "$(says "$(run stop x1 "$work/dc")" 'took a screenshot')" "1"
+
+# Work still running when the turn ends (a build, the tests, a reviewer agent): the ask waits until it finishes.
+run start g1 "$work/dc"; note g1 dc Plant.swift; shot g1
+tool g1 Bash '{"command":"xcodebuild test","description":"Run the tests","run_in_background":true}'
+bgid=toolu_$n
+check "a screen update while the tests run in the background waits" "$(run stop g1 "$work/dc")" ""
+check "and keeps waiting while they run" "$(run stop g1 "$work/dc")" ""
+printf '{"type":"queue-operation","operation":"enqueue","content":"<task-notification>\\n<task-id>b1</task-id>\\n<tool-use-id>%s</tool-use-id>\\n<status>completed</status>\\n</task-notification>"}\n' "$bgid" >> "$work/g1.jsonl"
+check "once they finish, the next stop asks for it" "$(says "$(run stop g1 "$work/dc")" 'took a screenshot')" "1"
+run start g2 "$work/dc"; note g2 dc Garden.swift; shot g2
+tool g2 Agent '{"description":"Review","prompt":"Review the diff","subagent_type":"general-purpose"}'
+printf '{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_%s","type":"tool_result","content":[{"type":"text","text":"Async agent launched successfully.\\nagentId: a1b2c3 (internal ID)"}]}]},"timestamp":"2027-01-15T08:00:00.000Z"}\n' "$n" >> "$work/g2.jsonl"
+check "an agent Claude Code runs in the background counts as running" "$(run stop g2 "$work/dc")" ""
+at 31
+check "but only for 30 minutes after it started: one stuck or forgotten doesn't hold asks forever" "$(says "$(run stop g2 "$work/dc")" 'took a screenshot')" "1"
+at 0
+run start g4 "$work/dc"; note g4 dc Shop.swift; shot g4
+tool g4 Bash '{"command":"xcodebuild test","description":"Run the tests","run_in_background":true}'
+printf '{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_%s","type":"tool_result","content":"Command running in background with ID: bq7x2. Output is being written to: /tmp/bq7x2.output"}]}}\n' "$n" >> "$work/g4.jsonl"
+tool g4 TaskStop '{"task_id":"bq7x2"}'
+check "a background command Claude stopped isn't still running" "$(says "$(run stop g4 "$work/dc")" 'took a screenshot')" "1"
+run start g5 "$work/dc"; note g5 dc Web.tsx; shot g5
+tool g5 Bash '{"command":"npm run dev","description":"Start the dev server","run_in_background":true}'
+tool g5 Bash '{"command":"xcrun simctl io booted recordVideo /tmp/clip.mov","description":"Record","run_in_background":true}'
+check "a dev server or a recording left running doesn't hold the ask" "$(valid "$(run stop g5 "$work/dc")")" "block"
+# A screen and the finished work on one turn (common once asks wait for the tests): one ask covers both.
+run start c1 "$work/dc"; note c1 dc Cart.swift; shot c1; commit c1 dc
+out=$(run stop c1 "$work/dc")
+check "a screen change and a commit on one turn: the update, and the receipt if the work is done" "$(says "$out" 'took a screenshot.*also saved work on dc.*receipt: true')" "1"
+check "which doesn't hold back the next commit's own ask" "$(cut -d' ' -f11 "$BUILDREEL_HOOK_STATE/c1")" "0"
+# A held ask survives a stop where Claude continued for another hook, and a resumed chat.
+done_bg() { printf '{"type":"queue-operation","operation":"enqueue","content":"<task-notification>\\n<tool-use-id>%s</tool-use-id>\\n<status>completed</status>\\n</task-notification>"}\n' "$2" >> "$work/$1.jsonl"; }
+run start h1 "$work/dc"; note h1 dc Plan.swift; shot h1
+tool h1 Bash '{"command":"xcodebuild test","description":"Run the tests","run_in_background":true}'; hid=toolu_$n
+check "held while the tests run" "$(run stop h1 "$work/dc")" ""
+check "a stop where Claude continued for another hook stays quiet" "$(run stop h1 "$work/dc" true)" ""
+run start h1 "$work/dc"
+done_bg h1 "$hid"
+check "and after that and a resumed chat, the held ask still comes once the tests finish" "$(says "$(run stop h1 "$work/dc")" 'took a screenshot')" "1"
+check "only once" "$(run stop h1 "$work/dc")" ""
+# An update Claude sends on its own while the tests still run doesn't use up the held receipt.
+run start h4 "$work/dc"; edit h4 dc; commit h4 dc
+tool h4 Bash '{"command":"xcodebuild test 2>/dev/null","description":"Run the tests","run_in_background":true}'; hid4=toolu_$n
+check "a commit while the tests run (with output sent to /dev/null) is held" "$(run stop h4 "$work/dc")" ""
+note h4 dc Shop2.swift; shot h4; update h4
+check "Claude sends an update on its own meanwhile: quiet" "$(run stop h4 "$work/dc")" ""
+done_bg h4 "$hid4"
+check "the tests finish: the receipt ask still comes" "$(says "$(run stop h4 "$work/dc")" 'this turn saved work on')" "1"
+run start h5 "$work/dc"; note h5 dc Plan5.swift; shot h5
+tool h5 Bash '{"command":"caffeinate -i scripts/testflight","description":"Upload","run_in_background":true}'
+check "an upload kept awake with caffeinate holds" "$(run stop h5 "$work/dc")" ""
+# What holds and what doesn't: test runners hold, dev servers don't, whatever the description says.
+run start h2 "$work/dc"; note h2 dc Plan2.swift; shot h2
+tool h2 Bash '{"command":"npx vitest run","description":"Run the tests against the server","run_in_background":true}'
+check "vitest holds the ask (it isn't vite), even described with \"server\"" "$(run stop h2 "$work/dc")" ""
+run start h3 "$work/dc"; note h3 dc Plan3.swift; shot h3
+tool h3 Bash '{"command":"scripts/consent-dev","description":"Start it","run_in_background":true}'
+tool h3 Bash '{"command":"supabase start","description":"Local stack","run_in_background":true}'
+check "a project's own dev script or a local stack doesn't" "$(valid "$(run stop h3 "$work/dc")")" "block"
+# A script that writes code (python, node) is real work; one that only reads isn't.
+run start p1 "$work/dc"; echo q >> "$work/dc/q.py"
+tool p1 Bash "{\"command\":\"cd $(top dc) && python3 - <<'EOF'\\np = 'App/Home.swift'\\ns = open(p).read()\\nopen(p, 'w').write(s.replace('a', 'b'))\\nEOF\",\"description\":\"Edit\"}"
+commit p1 dc
+check "a python script that rewrites a code file is real work" "$(says "$(run stop p1 "$work/dc")" 'saved work on')" "1"
+run start p2 "$work/dc"; note p2 dc docs/p2.md
+tool p2 Bash "{\"command\":\"cd $(top dc) && sed -i '' s/a/b/ docs/p2.md && cat App/Home.swift\",\"description\":\"Fix the note\"}"
+commit p2 dc
+check "sed -i on a note next to reading code isn't" "$(run stop p2 "$work/dc")" ""
+# After a screen ask that carried the receipt line, the next commit asks only after more work, but then even in the hour.
+at 300; run start c2 "$work/dc"; note c2 dc Cart2.swift; shot c2; commit c2 dc
+check "screen and receipt in one ask" "$(says "$(run stop c2 "$work/dc")" 'also saved work on')" "1"
+at 305; commit c2 dc
+check "a backup commit right after, with no new work, is quiet" "$(run stop c2 "$work/dc")" ""
+at 310; edit c2 dc; commit c2 dc
+check "with more work it asks for the receipt again, within the hour" "$(says "$(run stop c2 "$work/dc")" 'this turn saved work on')" "1"
+at 0
+run start g3 "$work/dc"; edit g3 dc; commit g3 dc
+tool g3 Bash '{"command":"scripts/testflight","description":"Upload","run_in_background":true}'
+printf '{"type":"user","message":{"role":"user","content":"done for today"}}\n' >> "$work/g3.jsonl"
+check "wrapping up isn't held back by work still running" "$(says "$(run stop g3 "$work/dc")" 'wrapping up')" "1"
 
 repo late; printf '## Buildreel\n' > "$work/late/AGENTS.md"
 screen s3 late; shot s3
@@ -231,7 +347,7 @@ check "a 0.9.0 state file is read; its old recording isn't new" "$(says "$out" '
 # The commit ask still notes when it went (the state line's eleventh number), now that more follow it.
 commit m3 mo; at 1; run stop m3 "$work/mo" >/dev/null
 check "the receipt ask's time is kept in its place" "$(cut -d' ' -f11 "$BUILDREEL_HOOK_STATE/m3")" "$BUILDREEL_NOW"
-check "and the numbers after it stay" "$(awk '{ print NF }' "$BUILDREEL_HOOK_STATE/m3")" "13"
+check "and the numbers after it stay" "$(awk '{ print NF }' "$BUILDREEL_HOOK_STATE/m3")" "16"
 at 0
 
 # What the server is told: motion, a recording, clips sent so far.

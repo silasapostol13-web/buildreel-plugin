@@ -60,10 +60,33 @@ writes='(^|[^a-z])git( +-[cC] +[^ ]+)* +(commit|apply|am|cherry-pick|revert|merg
 # Shell commands that write something. Before looking for ">", drop the ones that write nothing: 2>/dev/null, >&2, ->, =>, >=.
 shellw() { logs | grep -oE "$bash" | sed -E 's#[0-9&]*>>? *"?/dev/null"?##g; s#[0-9]*>&[0-9-]##g; s#[-=]>|>=##g' | grep -E "$writes"; }
 mine=$({ edits; shellw; } | ids)
+# Real work, what a receipt is about: edits to anything but notes and docs (.md, .txt, …), and shell commands that
+# write a code file in the project (its redirect, tee, sed -i or perl -i target, a script that writes files and names
+# one; git apply, patch, xcodegen). A session
+# that only wrote a plan, a handoff or research, or worked in a scratch folder, isn't asked for a receipt (most such
+# asks ended in "skipping").
+notes='\.(md|mdx|markdown|txt|rst|adoc)$'
+code='\.(swift|m|mm|h|c|cc|cpp|kt|java|dart|ts|tsx|js|jsx|mjs|cjs|vue|svelte|css|scss|sass|less|html|astro|py|rb|go|rs|php|sql|json|ya?ml|toml|plist|pbxproj|xcassets|storyboard|xib|gradle|sh)'
+shellwork() { shellw | perl -ne '
+  BEGIN { $root = shift @ARGV; $code = shift @ARGV; }
+  ($id) = /"id":"([^"]+)"/; ($c) = /"command":"((?:[^"\\]|\\.)*)"/; next unless defined $c;
+  $c =~ s/\\n/\n/g; $c =~ s/\\"/"/g;
+  $away = 0; # a cd somewhere else: its relative paths are not the project
+  while ($c =~ /(?:^|[;&|(\n])\s*cd\s+"?([^\s;&|"]+)/g) { $d = $1; if (index("$d/", "$root/") == 0) { $away = 0 } elsif ($d =~ m{^[/~\$]}) { $away = 1 } }
+  @t = (); push @t, $1 while $c =~ /(?:[0-9&]?>>?|\btee(?:\s+-a)?)\s*["\x27]?([^\s;&|"\x27<>()]+)/g;
+  # sed -i / perl -i: the files named in that command; a script that writes files (python, node): the files it names
+  for $part (split /&&|\|\||[;|\n]/, $c) { if ($part =~ /\b(?:sed|perl)\s+(?:-[a-zA-Z]*\s+)*-[a-z]*i/) { push @t, $1 while $part =~ /([^\s"\x27<>(),]+)/g; } }
+  if ($c =~ /\.write(?:_text|_bytes)?\(|writeFileSync|writeFile\(|open\([^)]*,\s*["\x27][wa]/) { push @t, $1 while $c =~ /([^\s"\x27<>(),=\[\]]+)/g; }
+  $hit = !$away && $c =~ /\bgit(?:\s+-C\s+\S+)?\s+apply\b|(?:^|[;&|\n]\s*)patch\s|\bxcodegen\b/ ? 1 : 0;
+  for (@t) { next unless /$code$/; if (m{^/}) { $hit = 1 if index($_, "$root/") == 0; } elsif (!$away && !/^[\$~]/) { $hit = 1; } }
+  print "\"id\":\"$id\"\n" if $hit;
+' "$root" "$code"; }
+work=$({ edits | grep -vE "$notes"; shellwork; } | ids)
 # Edits to files that draw a screen (SwiftUI, web, Android, Flutter, asset catalogs), with the edit tools or in the shell
-# (sed -i, a script that rewrites the file).
+# (sed -i, a script that rewrites the file). Tests aren't screens, even in Swift.
 screens='\.(swift|tsx|jsx|vue|svelte|css|scss|sass|less|html|xib|storyboard|dart|kt|astro)'
-ui=$({ edits | grep -E "$screens\$|\\.xcassets/"; shellw | grep -E "$screens([^A-Za-z]|\$)"; } | ids)
+tests() { printf '%s' "/(Tests?|[A-Z][A-Za-z]*Tests|tests?|__tests__|specs?)/|Tests?\\.[A-Za-z]+$1|/test_[^/\"]*\\.[A-Za-z]+$1|[._](test|spec)\\.[A-Za-z]+$1"; }
+ui=$({ edits | grep -E "$screens\$|\\.xcassets/" | grep -vE "$(tests '$')"; shellw | grep -E "$screens([^A-Za-z]|\$)"; } | ids)
 # Screenshots of the product: the simulator, a browser, an Xcode tool. Not other apps on the Mac.
 shots=$({
   logs | grep -oE "$use\"[^\"]*[Ss]creenshot[^\"]*\"" | grep -v 'computer-use'
@@ -82,7 +105,7 @@ calls() { logs | awk '{ gsub(/\{"type":"tool_use"/, "\n&"); print }'; }
 moves='withAnimation|\.animation\(|\.transition\(|matchedGeometryEffect|matchedTransitionSource|navigationTransition|[Pp]haseAnimator|[Kk]eyframeAnimator|contentTransition|symbolEffect|\.spring\(|interpolatingSpring|UIView\.animate|UIViewPropertyAnimator|CABasicAnimation|@keyframes|animation:|framer-motion|AnimatePresence|<motion\.|useSpring|gsap|startViewTransition|view-transition|\.animate\(|AnimationController|Animated[A-Z][a-z]|TweenAnimationBuilder|Hero\(|animate[A-Z][A-Za-z]*AsState|AnimatedVisibility|AnimatedContent|Crossfade\('
 motion=$({
   calls | grep -E "^\{$use\"(Edit|Write|MultiEdit)\"" | grep -F "\":\"$root/" | grep -E "\"file_path\":\"[^\"]*$screens\"" \
-    | sed -E 's/"old_string":"([^"\\]|\\.)*"//g; s/"caller":.*//' | grep -E "$moves"
+    | grep -vE "\"file_path\":\"[^\"]*($(tests '"'))" | sed -E 's/"old_string":"([^"\\]|\\.)*"//g; s/"caller":.*//' | grep -E "$moves"
   shellw | grep -E "$screens([^A-Za-z]|\$)" | grep -E "$moves"
 } | ids)
 # Updates sent with a clip (recording_id).
@@ -99,45 +122,82 @@ if [ "$(printf '%s' "$said" | wc -w | tr -d ' ')" -le 8 ] 2>/dev/null; then
   printf '%s' "$said" | grep -qE "(that'?s|thats) (it|all) for (today|now|tonight|the day)|(i'?m|im|i am|we'?re) (done|finished|out)( for (today|now|tonight|the day))?[ .!]*$|done for (today|now|tonight|the day)|call it a (day|night)|(signing|logging) off|^[^a-z]*(ok(ay)?|thanks?|nice|great|perfect)?[ ,.!]*good ?night|(stop|wrap( it| things)? up) (here|there|for (today|now|tonight))|that'?s a wrap" && wrap=1
 fi
 clock=${BUILDREEL_NOW:-$(date +%s)} # tests set the time
+# Work still running in the background when the turn ended (a build, the tests, an upload, a reviewer agent): the
+# session isn't done, and an ask then mostly ends in "not yet". Background commands and agents Claude Code started in
+# the last 30 minutes and not yet reported finished or stopped. Things meant to keep running (a dev server, a screen
+# recording, a log) don't count, nor does one started longer ago (stuck or forgotten).
+longrun='recordVideo|log stream|tail -f|--watch|(^|[^a-z])watch |(npm|pnpm|yarn|bun) (run )?(dev|start|serve|preview)|vite([^a-z]|$)|next (dev|start)|http\.server|(^|[^a-z])serve([^a-z]|$)|(^|[ /])server([ .]|$)|dev-?server|[-_/]dev([^a-z/]|$)|PORT=|--port|ngrok|supabase start|swift run|rails s|flask run|uvicorn|gunicorn|php -S|live-server|browser-sync|expo start|metro|jekyll serve|hugo server|docker[ -]compose up'
+pending=$(logs | perl -ne '
+  BEGIN { use Time::Local; $now = shift @ARGV; $long = shift @ARGV; }
+  $t = /"timestamp":"(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)/ ? timegm($6, $5, $4, $3, $2 - 1, $1) : $now;
+  if (/"type":"tool_use","id":"([^"]+)","name":"Bash","input":(\{.*)/) {
+    ($id, $in) = ($1, $2); $in =~ s/"caller":.*//; ($cmd) = $in =~ /^\{"command":"((?:[^"\\]|\\.)*)"/; $cmd =~ s{/dev/(null|std(out|err|in)|tty)}{}g;
+    $start{$id} = $t if $in =~ /"run_in_background":true/ && $cmd !~ /$long/;
+  }
+  if (/"tool_use_id":"([^"]+)","type":"tool_result","content":\[\{"type":"text","text":"Async agent launched[^"]*agentId: (\w+)/) { $start{$1} = $t; $task{$2} = $1; }
+  $task{$2} = $1 if /"tool_use_id":"([^"]+)","type":"tool_result","content":"Command running in background with ID: (\w+)/;
+  $done{$1} = 1 while /<tool-use-id>([^<]+)<\/tool-use-id>/g;
+  push @stop, $1 while /"name":"(?:TaskStop|KillShell|KillBash)","input":\{"(?:task_id|shell_id)":"(\w+)"/g;
+  END { $done{$task{$_}} = 1 for grep { $task{$_} } @stop; print scalar(grep { !$done{$_} && $now - $start{$_} < 1800 } keys %start); }
+' "$clock" "$longrun" 2>/dev/null)
+: "${pending:=0}"
 
 # The state: fingerprint, the counts above when last seen, when the last update and receipt went out,
 # how many screen edits there were when the last update went, this session's changes at the last receipt, when a
-# commit last asked for the receipt, the recordings when last seen, and the motion edits when the last update went.
+# commit last asked for the receipt, the recordings when last seen, the motion edits when the last update went, the
+# real work at the last receipt and at the last commit ask, and whether an ask is being held while work runs.
 # A chat that's resumed (or compacted) keeps what it did so far; only the project's look is taken again.
 if [ "$mode" = start ] && [ -s "$file" ]; then
   sed -i.bak "s/^[^ ]*/$now/" "$file" 2>/dev/null; rm -f "$file.bak"
   exit 0
 fi
 if [ ! -f "$file" ] || [ "$mode" = start ]; then
-  printf '%s %s %s %s %s %s %s %s %s %s %s %s %s\n' "$now" "$sent" "$mine" "$receipts" "$shots" "$commits" 0 0 "$ui" "$mine" 0 "$recs" "$motion" > "$file"
+  printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s\n' "$now" "$sent" "$mine" "$receipts" "$shots" "$commits" 0 0 "$ui" "$mine" 0 "$recs" "$motion" "$work" "$work" 0 > "$file"
   exit 0
 fi
-read -r was sent_before mine_before receipts_before shots_before commits_before sent_at receipt_at ui_at mine_r asked_at recs_before motion_at < "$file"
-: "${sent_before:=0}" "${mine_before:=0}" "${receipts_before:=0}" "${shots_before:=0}" "${commits_before:=$commits}" "${sent_at:=0}" "${receipt_at:=0}" "${ui_at:=0}" "${mine_r:=0}" "${asked_at:=0}" "${recs_before:=$recs}" "${motion_at:=$motion}"
+read -r was sent_before mine_before receipts_before shots_before commits_before sent_at receipt_at ui_at mine_r asked_at recs_before motion_at work_r work_a held < "$file"
+: "${sent_before:=0}" "${mine_before:=0}" "${receipts_before:=0}" "${shots_before:=0}" "${commits_before:=$commits}" "${sent_at:=0}" "${receipt_at:=0}" "${ui_at:=0}" "${mine_r:=0}" "${asked_at:=0}" "${recs_before:=$recs}" "${motion_at:=$motion}" "${work_r:=0}" "${work_a:=0}" "${held:=0}"
 s=0; [ "$sent" -gt "$sent_before" ] 2>/dev/null && { s=1; sent_at=$clock; ui_at=$ui; motion_at=$motion; }
-[ "$receipts" -gt "$receipts_before" ] 2>/dev/null && { receipt_at=$clock; mine_r=$mine; }
-printf '%s %s %s %s %s %s %s %s %s %s %s %s %s\n' "$now" "$sent" "$mine" "$receipts" "$shots" "$commits" "$sent_at" "$receipt_at" "$ui_at" "$mine_r" "$asked_at" "$recs" "$motion" > "$file"
+[ "$receipts" -gt "$receipts_before" ] 2>/dev/null && { receipt_at=$clock; mine_r=$mine; work_r=$work; }
+# Work still running: say nothing yet and keep what this turn did new for the stop after the work finishes (Claude Code
+# starts a turn when it does). Not when the person is wrapping up. While an ask is held, a stop where Claude continued
+# for another hook, or a turn that sent an update on its own, notes only what was sent (and the screens it covered),
+# so the held commit isn't taken as seen.
+if { [ "$active" = 0 ] && [ "$wrap" = 0 ] && [ "$pending" -gt 0 ] 2>/dev/null; } || { [ "$active" = 1 ] && [ "$held" = 1 ]; }; then
+  [ -n "$BUILDREEL_DEBUG" ] && echo "buildreel: waiting, $pending running" >&2
+  [ "$s" = 1 ] && { shots_before=$shots; recs_before=$recs; }
+  printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s\n' "$was" "$sent" "$mine_before" "$receipts" "$shots_before" "$commits_before" "$sent_at" "$receipt_at" "$ui_at" "$mine_r" "$asked_at" "$recs_before" "$motion_at" "$work_r" "$work_a" 1 > "$file"
+  exit 0
+fi
+printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s\n' "$now" "$sent" "$mine" "$receipts" "$shots" "$commits" "$sent_at" "$receipt_at" "$ui_at" "$mine_r" "$asked_at" "$recs" "$motion" "$work_r" "$work_a" 0 > "$file"
 [ "$active" = 1 ] && exit 0
 # A new recording after editing a screen since the last update: Claude watched it move, even on a turn that changed nothing.
 rec=0; [ "$recs" -gt "$recs_before" ] 2>/dev/null && [ "$ui" -gt "$ui_at" ] 2>/dev/null && rec=1
 changed=1
+[ "$held" = 1 ] && was=held # a held ask: a resumed chat's new look of the project doesn't make its work old
 { [ "$now" = "$was" ] || ! [ "$mine" -gt "$mine_before" ] 2>/dev/null; } && changed=0 # nothing new, or the changes were another session's
-# Wrapping up after work that has no receipt yet asks for it even on a turn that changed nothing itself.
-[ "$wrap" = 1 ] && [ "$s" = 0 ] && [ "$mine" -gt "$mine_r" ] 2>/dev/null || wrap=0
+# Wrapping up after real work that has no receipt yet asks for it even on a turn that changed nothing itself.
+[ "$wrap" = 1 ] && [ "$s" = 0 ] && [ "$work" -gt "$work_r" ] 2>/dev/null || wrap=0
 [ "$changed" = 1 ] || [ "$wrap" = 1 ] || [ "$rec" = 1 ] || exit 0
 
 # This turn: a new screenshot after editing a screen since the last update, a commit, how long since
 # the last update and receipt (minutes, -1 for none yet this chat).
 shot=0; [ "$shots" -gt "$shots_before" ] 2>/dev/null && [ "$ui" -gt "$ui_at" ] 2>/dev/null && shot=1
-commit=0; [ "$commits" -gt "$commits_before" ] 2>/dev/null && commit=1
+# A commit asks for the receipt only after real work since the last receipt, and since the last ask: one that came
+# back "not finished yet" isn't asked again until more work is done.
+commit=0; [ "$commits" -gt "$commits_before" ] 2>/dev/null && [ "$work" -gt "$work_r" ] 2>/dev/null && [ "$work" -gt "$work_a" ] 2>/dev/null && commit=1
 moved=0; [ "$motion" -gt "$motion_at" ] 2>/dev/null && moved=1
 since=-1; [ "$sent_at" -gt 0 ] 2>/dev/null && since=$(( (clock - sent_at) / 60 ))
 rsince=-1; [ "$receipt_at" -gt 0 ] 2>/dev/null && rsince=$(( (clock - receipt_at) / 60 ))
 # When a commit last asked for the receipt: it waits an hour after an ask too, sent or not, so a person who
 # commits every turn isn't asked every turn.
 asince=-1; [ "$asked_at" -gt 0 ] 2>/dev/null && asince=$(( (clock - asked_at) / 60 ))
-# Notes that a commit's receipt ask went out (the state line's last number).
-noteask() { case "$1" in *'saved work on'*) awk -v c="$clock" '{ $11 = c; print }' "$file" > "$file.new" 2>/dev/null && mv "$file.new" "$file" ;; esac; }
+# Notes that a commit's receipt ask went out, and the real work then (the state line's 11th and 15th numbers). The
+# receipt line riding on a screen ask notes only the work: the next commit asks again after more work, even in the hour.
+noteask() { case "$1" in
+  *'this turn saved work on'*) awk -v c="$clock" -v w="$work" '{ $11 = c; $15 = w; print }' "$file" > "$file.new" 2>/dev/null && mv "$file.new" "$file" ;;
+  *'also saved work on'*) awk -v w="$work" '{ $15 = w; print }' "$file" > "$file.new" 2>/dev/null && mv "$file.new" "$file" ;;
+esac; }
 o=0; [ "$offered" -gt 0 ] 2>/dev/null && o=1
 project=$(basename "$root" | sed 's/[\\"]//g')
 
@@ -145,7 +205,7 @@ project=$(basename "$root" | sed 's/[\\"]//g')
 # a plugin update; this script's own copy below is only for when the server can't be reached.
 reply=$(curl -fsS --max-time 4 --get --data-urlencode "project=$project" -d v=2 -d "sent=$s" -d "offered=$o" \
   -d "shot=$shot" -d "commit=$commit" -d "updates=$sent" -d "receipts=$receipts" -d "since=$since" -d "receipt_since=$rsince" -d "wrap=$wrap" -d "asked_since=$asince" \
-  -d "motion=$moved" -d "rec=$rec" -d "clips=$clips" \
+  -d "motion=$moved" -d "rec=$rec" -d "clips=$clips" -d hold=1 \
   "${BUILDREEL_URL:-https://buildreel.pages.dev/mcp}/hook" 2>/dev/null | tr -d '\n')
 case "$reply" in
   '{}') exit 0 ;;
@@ -160,13 +220,16 @@ if [ "$wrap" = 1 ] && { [ "$rsince" -lt 0 ] || [ "$rsince" -ge 10 ]; }; then
   block "Buildreel: the person is wrapping up. Close the session with its receipt now: post_update for project \\\"$project\\\" with extra { receipt: true }; sentence: what this session got done since its last receipt, said to a stranger; benefit; milestone if one was reached; next: what comes next; and a screenshot if there is a screen to show. Then end your turn with one short line at most; don't repeat your summary."
 fi
 moments=$((sent - receipts))
+due=0; [ "$commit" = 1 ] && { [ "$rsince" -lt 0 ] || [ "$rsince" -ge 60 ]; } && { [ "$asince" -lt 0 ] || [ "$asince" -ge 60 ]; } && due=1
+# A screen ask on a turn that also finished the work covers the receipt too, or the receipt would be lost.
+also=""; [ "$due" = 1 ] && also=" This turn also saved work on $project: if it finished what the person asked for in this chat, also close the session with its receipt after that update: post_update for project \\\"$project\\\" with extra { receipt: true }; sentence: what this whole session got done, said to a stranger; benefit; milestone if one was reached; next: what comes next."
 if { [ "$rec" = 1 ] || { [ "$moved" = 1 ] && [ "$shot" = 1 ]; }; } && [ "$clips" -lt 2 ] && [ "$moments" -lt 3 ] && { [ "$since" -lt 0 ] || [ "$since" -ge 20 ]; }; then
-  block "Buildreel: this turn changed something on $project that moves (an animation or transition) and you've seen it running. Send it to Buildreel as a short clip instead of a still, now and without asking: record the real app doing it once (iOS: xcrun simctl io booted recordVideo --codec h264 --force /tmp/buildreel-clip-raw.mov in the background, then kill -INT it; or use the recording you just took), trim it with ffmpeg to the 2 to 8 seconds around the motion as a portrait, silent MP4, look at its frames, and send it only if the motion is plainly visible and it shows only the real app. Then get_upload_link with kind \\\"recording\\\", upload it, get_upload_link for a screenshot of where it ends, and post_update for project \\\"$project\\\" with recording_id, upload_id, one plain sentence on what's new, benefit and screen. If the clip doesn't work out, send the screenshot as a normal update.$post Then end your turn with one short line at most."
+  block "Buildreel: this turn changed something on $project that moves (an animation or transition) and you've seen it running. Send it to Buildreel as a short clip instead of a still, now and without asking: record the real app doing it once (iOS: xcrun simctl io booted recordVideo --codec h264 --force /tmp/buildreel-clip-raw.mov in the background, then kill -INT it; or use the recording you just took), trim it with ffmpeg to the 2 to 8 seconds around the motion as a portrait, silent MP4, look at its frames, and send it only if the motion is plainly visible and it shows only the real app. Then get_upload_link with kind \\\"recording\\\", upload it, get_upload_link for a screenshot of where it ends, and post_update for project \\\"$project\\\" with recording_id, upload_id, one plain sentence on what's new, benefit and screen. If the clip doesn't work out, send the screenshot as a normal update.$also$post Then end your turn with one short line at most."
 fi
 if [ "$shot" = 1 ] && [ "$moments" -lt 3 ] && { [ "$since" -lt 0 ] || [ "$since" -ge 20 ]; }; then
-  block "Buildreel: this turn changed how $project looks and you took a screenshot of it. Send it to Buildreel now, without asking: get_upload_link, upload that screenshot (or a fresh one of the same screen), then post_update for project \\\"$project\\\" with one plain sentence on what's new on screen, benefit and screen. Skip it only if the screen looks the same as in your last Buildreel update, or is broken or half-done.$post Then end your turn with one short line at most."
+  block "Buildreel: this turn changed how $project looks and you took a screenshot of it. Send it to Buildreel now, without asking: get_upload_link, upload that screenshot (or a fresh one of the same screen), then post_update for project \\\"$project\\\" with one plain sentence on what's new on screen, benefit and screen. Skip it only if the screen looks the same as in your last Buildreel update, or is broken or half-done.$also$post Then end your turn with one short line at most."
 fi
-if [ "$commit" = 1 ] && { [ "$rsince" -lt 0 ] || [ "$rsince" -ge 60 ]; } && { [ "$asince" -lt 0 ] || [ "$asince" -ge 60 ]; }; then
+if [ "$due" = 1 ]; then
   block "Buildreel: this turn saved work on $project. If it finished what the person asked for in this chat, close the session with its receipt now: post_update for project \\\"$project\\\" with extra { receipt: true }; sentence: what this whole session got done, said to a stranger; benefit; milestone if one was reached; next: what comes next; and a screenshot if there is a screen to show. If their request isn't finished yet, end your turn with no reply."
 fi
 exit 0
