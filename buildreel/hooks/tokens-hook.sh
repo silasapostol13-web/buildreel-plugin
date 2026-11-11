@@ -15,6 +15,8 @@ field() { printf '%s' "$input" | tr '\n' ' ' | sed -n "s/.*\"$1\" *: *\"\([^\"]*
 key=${BUILDREEL_TOKEN_KEY:-"$HOME/.config/buildreel/token-key"}
 state=${BUILDREEL_HOOK_STATE:-"$HOME/.claude/buildreel-hook"}
 counter=${BUILDREEL_COUNTER:-"$(cd "$(dirname "$0")" && pwd)/count-tokens.py"}
+# This plugin's version rides with the counts, so the person's phone can tell when the plugin is out of date.
+pv=$(sed -n 's/.*"version": *"\([0-9.]*\)".*/\1/p' "$(dirname "$0")/../.claude-plugin/plugin.json" 2>/dev/null | head -n 1)
 mkdir -p "$state" 2>/dev/null || exit 0
 # True when the file is missing or older than $2 minutes.
 older() { [ ! -f "$1" ] || [ -n "$(find "$1" -mmin +"$2" 2>/dev/null)" ]; }
@@ -28,7 +30,7 @@ if [ -s "$key" ]; then
   cwd=$(field cwd); session=$(field session_id | tr -cd 'A-Za-z0-9_-')
   # Detached, so Claude never waits on it; it takes a few seconds.
   (trap '' HUP; cd "${cwd:-$HOME}" 2>/dev/null || cd "$HOME"
-   { date '+%F %T'; python3 -I "$counter" --background --ai claude_code --cwd "${cwd:-$PWD}" ${session:+--session "$session"}; } >> "$log" 2>&1) </dev/null >/dev/null 2>&1 &
+   { date '+%F %T'; python3 -I "$counter" --background --ai claude_code --cwd "${cwd:-$PWD}" ${session:+--session "$session"} ${pv:+--plugin "$pv"}; } >> "$log" 2>&1) </dev/null >/dev/null 2>&1 &
   exit 0
 fi
 

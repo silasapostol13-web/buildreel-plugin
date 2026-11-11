@@ -60,8 +60,9 @@ claude mcp add --transport http --scope user buildreel https://buildreel.app/mcp
 Restart Claude Code after installing.
 
 **Turn on updates, once:** in Claude Code type `/plugin`, open **Marketplaces**, pick **buildreel**
-and choose **Enable auto-update**. Claude Code doesn't let a plugin do this for you. Without it, update
-by hand with `claude plugin marketplace update buildreel` and `claude plugin update buildreel@buildreel`.
+and choose **Enable auto-update** (Buildreel's install line from the iPhone app does this for you). Without
+it, update by hand with `claude plugin marketplace update buildreel` and `claude plugin update buildreel@buildreel`.
+If your plugin is out of date, Claude mentions it once, in one line, the next time Buildreel asks for an update.
 The connector itself updates on its own.
 
 ## What runs on your Mac

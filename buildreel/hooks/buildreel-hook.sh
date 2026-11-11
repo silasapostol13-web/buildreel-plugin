@@ -200,12 +200,14 @@ noteask() { case "$1" in
 esac; }
 o=0; [ "$offered" -gt 0 ] 2>/dev/null && o=1
 project=$(basename "$root" | sed 's/[\\"]//g')
+# This plugin's own version, so the server can tell an out-of-date plugin to update itself (once, on an ask it sends anyway).
+pv=$(sed -n 's/.*"version": *"\([0-9.]*\)".*/\1/p' "$(dirname "$0")/../.claude-plugin/plugin.json" 2>/dev/null | head -n 1)
 
 # The wording comes from Buildreel's server each time (hookReply in the connector), so it can change without
 # a plugin update; this script's own copy below is only for when the server can't be reached.
 reply=$(curl -fsS --max-time 4 --get --data-urlencode "project=$project" -d v=2 -d "sent=$s" -d "offered=$o" \
   -d "shot=$shot" -d "commit=$commit" -d "updates=$sent" -d "receipts=$receipts" -d "since=$since" -d "receipt_since=$rsince" -d "wrap=$wrap" -d "asked_since=$asince" \
-  -d "motion=$moved" -d "rec=$rec" -d "clips=$clips" -d hold=1 \
+  -d "motion=$moved" -d "rec=$rec" -d "clips=$clips" -d hold=1 -d "pv=$pv" \
   "${BUILDREEL_URL:-https://buildreel.pages.dev/mcp}/hook" 2>/dev/null | tr -d '\n')
 case "$reply" in
   '{}') exit 0 ;;

@@ -10,6 +10,7 @@
 #   --keep         also save this Mac's lasting key (~/.config/buildreel/token-key, yours only), so
 #                  Buildreel's Claude Code plugin can send the numbers after chats. It can only add numbers.
 #   --background   what the plugin runs: send with the saved key; does nothing when there is none.
+#   --plugin V     the plugin's version, sent with the counts so Buildreel can tell when the plugin is out of date.
 import glob, hashlib, json, os, re, sys, time, urllib.request
 from datetime import datetime, timezone
 
@@ -169,6 +170,8 @@ payload = {
     "current": {"ai": current_ai, "session": current[1]} if current else None,
     "rows": out,
 }
+if re.match(r"^[0-9]+(\.[0-9]+){0,3}$", option("--plugin") or ""):  # the plugin's version, when the plugin runs it
+    payload["plugin"] = option("--plugin")
 
 def short(n):
     for size, unit in ((1e12, "T"), (1e9, "B"), (1e6, "M"), (1e3, "K")):
