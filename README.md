@@ -21,8 +21,9 @@ This plugin makes Claude Code send those updates by itself:
   docs), because each reminder costs a Claude step from your own usage.
 - At good moments (a big feature, a new main screen) it offers a video or a post with a one-tap
   Yes / Not now. Nothing is made without your yes.
-- It keeps your token card up to date: after chats it sends your AI token counts. Numbers only,
-  never chat text, prompts, file paths or code.
+- It keeps your token card up to date: after chats it sends your AI token counts. Numbers, never
+  chat text, prompts, file paths or code. A folder's name goes only for projects you set up for
+  Buildreel; every other chat on your Mac is counted together as "other", with no name.
 
 ## Install
 
@@ -74,7 +75,9 @@ Two small hooks, both in `buildreel/hooks/`, both readable:
   counts to pick the wording, never your messages or code.
 - `tokens-hook.sh` runs `count-tokens.py` in the background. It reads token counts from Claude
   Code's and Codex's local chat logs and sends, per session and day: which AI, a hash of the
-  session id, the folder's name, the date and four counts. Its key lives in
+  session id, the date, four counts, and the project's folder name only for a project set up for
+  Buildreel ("other" for every other chat). To see exactly what it would send:
+  `python3 count-tokens.py --dry --json` (it sends nothing). Its key lives in
   `~/.config/buildreel/token-key`, only on your Mac.
 
 Privacy: <https://buildreel.app/privacy/>. Questions: hello@buildreel.app.

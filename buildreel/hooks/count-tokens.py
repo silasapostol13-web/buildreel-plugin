@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-# Buildreel token counter: adds up your AI's token counts on this Mac and sends the numbers only.
+# Buildreel token counter: adds up your AI's token counts on this Mac and sends the numbers.
 # Reads Claude Code's chats (~/.claude/projects) and Codex's (~/.codex/sessions). For each session
-# and day it sends: which AI, a hash of the session id, the folder's name, the date, and four counts
-# (new input, output, cache writes, cache reads). Never chat text, prompts, file paths or code.
+# and day it sends: which AI, a hash of the session id, the date, four counts (new input, output,
+# cache writes, cache reads) and which project: a project's folder name only when that project is
+# set up for Buildreel (a "## Buildreel" section in its CLAUDE.md or AGENTS.md); every other chat is
+# sent as "other", with no name. Never chat text, prompts, file paths, other folders' names or code.
+# See exactly what it would send: python3 buildreel-tokens.py --dry --json
 # Usage: python3 buildreel-tokens.py --send LINK [--ai claude_code|codex] [--keep]   (--dry prints instead)
 #   --keep         also save this Mac's lasting key (~/.config/buildreel/token-key, yours only), so
 #                  Buildreel's Claude Code plugin can send the numbers after chats. It can only add numbers.
@@ -50,10 +53,31 @@ def local_day(stamp):
         return None
     return t.astimezone().strftime("%Y-%m-%d")
 
+# A folder's project name, or "other": only a git project with a "## Buildreel" section in its CLAUDE.md or
+# AGENTS.md (the same test the plugin uses) is named, by its top folder. Nothing else's name leaves this Mac.
+named = {}
+def project_of(folder):
+    if folder not in named:
+        name, d = "other", os.path.realpath(folder) if folder else None
+        while d:
+            if os.path.exists(os.path.join(d, ".git")):
+                for doc in ("CLAUDE.md", "AGENTS.md"):
+                    try:
+                        with open(os.path.join(d, doc), encoding="utf-8", errors="ignore") as f:
+                            if any(l.startswith("## Buildreel") for l in f):
+                                name = (os.path.basename(d) or "other")[:120]
+                    except OSError:
+                        pass
+                break
+            up = os.path.dirname(d)
+            d = None if up == d else up
+        named[folder] = name
+    return named[folder]
+
 def add(ai, session, folder, day, counts):
     if not session or not day or not any(counts):
         return
-    project = (os.path.basename((folder or "").rstrip("/")) or "unknown")[:120]
+    project = project_of(folder)
     key = (ai, hashed(session), project, day)
     total = rows.setdefault(key, [0, 0, 0, 0])
     for i, n in enumerate(counts):
@@ -203,7 +227,7 @@ except Exception as e:
 print(line + " Sent to Buildreel, which now keeps %s days." % reply.get("days", "?"))
 if keep and good_send(reply.get("send")) and re.match(r"^brk_[A-Za-z0-9_-]{43}$", str(reply.get("key", ""))):
     write_key({"v": 1, "send": reply["send"], "key": reply["key"]})
-    print("Saved this Mac's key, so Buildreel's Claude Code plugin keeps these numbers fresh after chats (numbers only).")
+    print("Saved this Mac's key, so Buildreel's Claude Code plugin keeps these numbers fresh after chats (numbers, never chat text).")
 if reply.get("milestone"):
     print("Milestone: %s. Show it with token_card." % reply["milestone"])
 if "claude_code" in by_ai and not keeps:
