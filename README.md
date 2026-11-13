@@ -81,4 +81,8 @@ Two small hooks, both in `buildreel/hooks/`, both readable:
   `python3 count-tokens.py --dry --json` (it sends nothing). Its key lives in
   `~/.config/buildreel/token-key`, only on your Mac.
 
+- `scripts/usage-check.py` is only run when you run it: it reads your Claude Code chats on this Mac and prints what
+  share of each recent session went to Buildreel. It sends nothing. One line in Terminal:
+  `curl -fsSL https://buildreel.app/mcp/usage-check.py | python3 -I -`
+
 Privacy: <https://buildreel.app/privacy/>. Questions: hello@buildreel.app.
