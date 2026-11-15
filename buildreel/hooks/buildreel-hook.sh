@@ -205,7 +205,9 @@ pv=$(sed -n 's/.*"version": *"\([0-9.]*\)".*/\1/p' "$(dirname "$0")/../.claude-p
 
 # The wording comes from Buildreel's server each time (hookReply in the connector), so it can change without
 # a plugin update; this script's own copy below is only for when the server can't be reached.
-reply=$(curl -fsS --max-time 4 --get --data-urlencode "project=$project" -d v=2 -d "sent=$s" -d "offered=$o" \
+# The project's name goes in a header, URL-encoded, so it never sits in the server's request log (2026-11-15).
+enc=$(printf '%s' "$project" | od -An -tx1 -v | tr -d ' \n' | sed 's/../%&/g')
+reply=$(curl -fsS --max-time 4 --get -H "x-buildreel-project: $enc" -d v=2 -d "sent=$s" -d "offered=$o" \
   -d "shot=$shot" -d "commit=$commit" -d "updates=$sent" -d "receipts=$receipts" -d "since=$since" -d "receipt_since=$rsince" -d "wrap=$wrap" -d "asked_since=$asince" \
   -d "motion=$moved" -d "rec=$rec" -d "clips=$clips" -d hold=1 -d "pv=$pv" \
   "${BUILDREEL_URL:-https://buildreel.pages.dev/mcp}/hook" 2>/dev/null | tr -d '\n')
