@@ -147,6 +147,21 @@ pending=$(logs | perl -ne '
 # commit last asked for the receipt, the recordings when last seen, the motion edits when the last update went, the
 # real work at the last receipt and at the last commit ask, and whether an ask is being held while work runs.
 # A chat that's resumed (or compacted) keeps what it did so far; only the project's look is taken again.
+# Posting days (Tue and Thu until the person picks theirs in the app; BUILDREEL_POSTING_DAYS as ISO weekdays, 1 = Monday):
+# on the first chat of such a day in this project, Claude makes one carousel after the first finished task, without a
+# "want a post?" question (Silas, vision Q43: no question card; the chat card and a phone notification say it's ready).
+if [ "$mode" = start ]; then
+  dow=${BUILDREEL_TODAY:-$(date +%u)}
+  case " ${BUILDREEL_POSTING_DAYS:-2 4} " in *" $dow "*)
+    key=$(printf '%s' "$root" | shasum | cut -c1-12); mark="$state/posting-$key-$(date +%Y-%m-%d)"
+    if [ ! -f "$mark" ]; then
+      : > "$mark"
+      day=$(echo "Monday Tuesday Wednesday Thursday Friday Saturday Sunday" | cut -d' ' -f"$dow")
+      name=$(basename "$root" | sed 's/[\\"]//g')
+      printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"Buildreel: today is %s, one of the person'"'"'s posting days. Once in this chat, right after you finish the first thing they ask for (never before it or instead of it), make one carousel for project \\"%s\\" without asking first: get_catalog for the project, then make_post with type recap from its best updates (a headline a stranger who might use the app would stop for, card_headlines, captions for instagram and tiktok). The chat card and a phone notification tell them it is ready, and nothing posts until they tap Post on their phone. Never ask whether they want a post or a video. Skip it if the catalog has fewer than 2 updates with pictures."}}\n' "$day" "$name"
+    fi ;;
+  esac
+fi
 if [ "$mode" = start ] && [ -s "$file" ]; then
   sed -i.bak "s/^[^ ]*/$now/" "$file" 2>/dev/null; rm -f "$file.bak"
   exit 0

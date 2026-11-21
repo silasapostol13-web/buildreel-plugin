@@ -413,4 +413,14 @@ printf '{"v":1,"stopped":true}' > "$work/key"; touch -t 202601010000 "$work/tsta
 check "a Mac the person stopped is not asked again" "$(trun t2)" ""
 check "and sends nothing" "$(sleep 3; counted)" "2"
 
+# Posting days (look B, 2026-11-21): the first chat of a posting day in a project asks for one carousel, never a question.
+repo pd
+ctx() { printf '{"session_id":"%s","transcript_path":"x","cwd":"%s"}' "$1" "$work/pd" | BUILDREEL_TODAY=$2 "$hook" start | python3 -c 'import json,sys; t=sys.stdin.read(); print(json.loads(t)["hookSpecificOutput"]["additionalContext"] if t.strip() else "")'; }
+printf '## Buildreel\n' > "$work/pd/CLAUDE.md"
+check "not a posting day: nothing" "$(ctx pd1 5)" ""
+check "a posting day: one carousel, made without a question" "$(ctx pd2 2 | grep -c 'today is Tuesday.*make_post with type recap.*Never ask whether they want a post or a video')" "1"
+check "only once that day in that project" "$(ctx pd3 2)" ""
+repo pe; printf '## Buildreel\n' > "$work/pe/CLAUDE.md"
+check "the person's own days win" "$(printf '{"session_id":"pd4","transcript_path":"x","cwd":"%s"}' "$work/pe" | BUILDREEL_TODAY=6 BUILDREEL_POSTING_DAYS="6" "$hook" start | grep -c Saturday)" "1"
+
 echo; [ $fails -eq 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
