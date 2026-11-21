@@ -147,12 +147,14 @@ pending=$(logs | perl -ne '
 # commit last asked for the receipt, the recordings when last seen, the motion edits when the last update went, the
 # real work at the last receipt and at the last commit ask, and whether an ask is being held while work runs.
 # A chat that's resumed (or compacted) keeps what it did so far; only the project's look is taken again.
-# Posting days (Tue and Thu until the person picks theirs in the app; BUILDREEL_POSTING_DAYS as ISO weekdays, 1 = Monday):
+# Posting days (the ones picked on the phone, which tokens-hook.sh keeps in $state/posting-days; Tue / Thu / Sat until
+# then; BUILDREEL_POSTING_DAYS as ISO weekdays, 1 = Monday, wins):
 # on the first chat of such a day in this project, Claude makes one carousel after the first finished task, without a
 # "want a post?" question (Silas, vision Q43: no question card; the chat card and a phone notification say it's ready).
 if [ "$mode" = start ]; then
   dow=${BUILDREEL_TODAY:-$(date +%u)}
-  case " ${BUILDREEL_POSTING_DAYS:-2 4} " in *" $dow "*)
+  days=${BUILDREEL_POSTING_DAYS:-$(tr -cd '1-7 ' < "$state/posting-days" 2>/dev/null)}
+  case " ${days:-2 4 6} " in *" $dow "*)
     key=$(printf '%s' "$root" | shasum | cut -c1-12); mark="$state/posting-$key-$(date +%Y-%m-%d)"
     if [ ! -f "$mark" ]; then
       : > "$mark"

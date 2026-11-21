@@ -23,6 +23,17 @@ older() { [ ! -f "$1" ] || [ -n "$(find "$1" -mmin +"$2" 2>/dev/null)" ]; }
 
 if [ -s "$key" ]; then
   grep -q '"stopped"' "$key" && exit 0
+  # The posting days picked on the phone (GET /days with this Mac's key), at most every 6 hours, for buildreel-hook.sh's
+  # posting-day carousel. Detached; a failed ask leaves the last days (or none: Tue / Thu / Sat) and tries next time.
+  if older "$state/posting-days" 360; then
+    days_url=$(tr -d '\n' < "$key" | sed -n 's/.*"send" *: *"\([^"]*\)\/tokens\/key".*/\1\/days/p')
+    bearer=$(tr -d '\n' < "$key" | sed -n 's/.*"key" *: *"\(brk_[A-Za-z0-9_-]*\)".*/\1/p')
+    if [ -n "$days_url" ] && [ -n "$bearer" ]; then
+      (trap '' HUP
+       d=$(curl -fsS --max-time 4 -H "Authorization: Bearer $bearer" "$days_url" 2>/dev/null | tr -d ' \n' | sed -n 's/.*"days":\[\([1-7,]*\)\].*/\1/p' | tr ',' ' ')
+       [ -n "$d" ] && printf '%s\n' "$d" > "$state/posting-days") </dev/null >/dev/null 2>&1 &
+    fi
+  fi
   older "$state/tokens-sent" 30 || exit 0
   touch "$state/tokens-sent"
   log="$state/tokens.log"

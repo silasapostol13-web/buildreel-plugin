@@ -423,4 +423,12 @@ check "only once that day in that project" "$(ctx pd3 2)" ""
 repo pe; printf '## Buildreel\n' > "$work/pe/CLAUDE.md"
 check "the person's own days win" "$(printf '{"session_id":"pd4","transcript_path":"x","cwd":"%s"}' "$work/pe" | BUILDREEL_TODAY=6 BUILDREEL_POSTING_DAYS="6" "$hook" start | grep -c Saturday)" "1"
 
+# The days picked on the phone (cached by tokens-hook.sh from GET /days) replace the default Tue / Thu / Sat.
+repo pg; printf '## Buildreel\n' > "$work/pg/CLAUDE.md"
+check "Saturday is a default posting day now" "$(printf '{"session_id":"pg1","transcript_path":"x","cwd":"%s"}' "$work/pg" | BUILDREEL_TODAY=6 "$hook" start | grep -c 'today is Saturday')" "1"
+repo pf; printf '## Buildreel\n' > "$work/pf/CLAUDE.md"; printf '1 3 5\n' > "$BUILDREEL_HOOK_STATE/posting-days"
+pdays() { printf '{"session_id":"%s","transcript_path":"x","cwd":"%s"}' "$1" "$work/pf" | BUILDREEL_TODAY=$2 "$hook" start | grep -c "today is $3"; }
+check "the phone's days: Monday is one" "$(pdays pf1 1 Monday)" "1"
+check "the phone's days: Tuesday no longer is" "$(pdays pf2 2 Tuesday)" "0"
+rm -f "$BUILDREEL_HOOK_STATE/posting-days"
 echo; [ $fails -eq 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
