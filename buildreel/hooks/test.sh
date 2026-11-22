@@ -46,7 +46,8 @@ screen s2 app; shot s2
 out=$(run stop s2 "$work/app")
 check "a screen changed and Claude took a screenshot: send it now" "$(valid "$out")" "block"
 check "the ask names the project and the screenshot" "$(says "$out" 'took a screenshot of it.*post_update for project')" "1"
-check "it offers a post with it while none was offered" "$(says "$out" 'call offer_post.*never make a post before their yes')" "1"
+check "while no post was made, a milestone's post is made with no question" "$(says "$out" 'reached a milestone.*make_post with piece testers, launch or first_dollar.*Never ask whether they want a post')" "1"
+check "it never asks about a post" "$(says "$out" 'offer_post\|their yes\|Want me to')" "0"
 check "the same changes are never asked about twice" "$(run stop s2 "$work/app")" ""
 screen s2 app; shot s2
 check "Claude continuing because of the ask is not asked again" "$(run stop s2 "$work/app" true)" ""
@@ -70,7 +71,7 @@ commit s2 app
 out=$(run stop s2 "$work/app")
 check "a turn that commits is asked for the session's receipt" "$(says "$out" 'saved work on app.*extra { receipt: true }')" "1"
 check "but only if it finished what the person asked for" "$(says "$out" "If their request isn't finished yet, end your turn with no reply")" "1"
-check "after one post offer in the chat, no more are asked for" "$(says "$out" offer_post)" "0"
+check "after one post offer in the chat, no more are asked for" "$(says "$out" 'make_post with piece')" "0"
 update s2 receipt; run stop s2 "$work/app" true >/dev/null
 at 100; commit s2 app
 check "one receipt, then the next commit is quiet" "$(run stop s2 "$work/app")" ""

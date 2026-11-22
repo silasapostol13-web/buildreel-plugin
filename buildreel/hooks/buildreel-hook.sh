@@ -111,7 +111,8 @@ motion=$({
 # Updates sent with a clip (recording_id).
 clips=$(calls | grep -E "^\{$use\"[^\"]*__post_update\"" | sed 's/"caller":.*//' | grep -E '"recording_id": *"[^"]' \
   | sed 's/^{"type":"tool_use","id":"\([^"]*\)".*/\1/' | sort -u | wc -l | tr -d ' ')
-offered=$(logs | grep -oE "$use\"[^\"]*__offer_post\"" | ids)
+# A post already offered or made in this chat (either counts: one a sitting).
+offered=$(logs | grep -oE "$use\"[^\"]*__(offer_post|make_post)\"" | ids)
 # Whether the person's latest message wraps the session up ("that's it for today", "done for now"): read here,
 # on this Mac, and only a yes / no goes to Buildreel, never their words.
 said=$(grep '"type":"user"' "$transcript" 2>/dev/null | grep -v '"isMeta":true' | grep -v '"tool_result"' | tail -n 1 \
@@ -234,7 +235,8 @@ case "$reply" in
 esac
 
 post=""
-[ "$o" = 0 ] && post=" If this is also a good moment for a post (a feature done start to finish, a screen that looks very different, ready for testers, launch, first dollar: offer_post lists the kinds), call offer_post on your own with a short line of your own on what's new, then end your turn and wait for their answer; never make a post before their yes."
+# No post question (server hookReply, master's call B 2026-11-21): only a milestone's post is made on its own, right away.
+[ "$o" = 0 ] && post=" If this turn also reached a milestone (a TestFlight link for testers, the app out on the App Store, its first dollar) and no Buildreel post was made for it, make that post now, no need to ask first (nothing posts until they tap Post on their phone): get_catalog, then make_post with piece testers, launch or first_dollar and your own short reason, and tell them in one line it's on their phone, Ready to post. Never ask whether they want a post."
 block() { noteask "$1"; printf '{"decision":"block","reason":"%s"}\n' "$1"; exit 0; }
 [ "$s" = 1 ] && exit 0 # it sent an update this turn: nothing more to ask
 if [ "$wrap" = 1 ] && { [ "$rsince" -lt 0 ] || [ "$rsince" -ge 10 ]; }; then
